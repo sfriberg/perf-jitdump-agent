@@ -5,8 +5,9 @@
     cd perf-jitdump-agent
     mvn package
     
+    # Create a directory named jitdump in the project home directory with scripts and libraries
     cd target
-    make install # Will create a directory named jitdump in the project home directory with required scripts and libraries
+    make install
 
 ## Usage
 
