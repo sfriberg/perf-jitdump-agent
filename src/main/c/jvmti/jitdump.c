@@ -221,7 +221,7 @@ open_jitdump(const char *dir)
 end:
 	pthread_mutex_unlock(&jitdump_lock);
 	if (!error) {
-		LOG_DEBUG("%s(%s)", "Jit dump opened", filename);
+		LOG_INFO("%s(%s)", "Jit dump opened", filename);
 	}
 	return error;
 }

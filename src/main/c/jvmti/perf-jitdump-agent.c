@@ -94,6 +94,9 @@ bci2line(jvmtiLineNumberEntry* entries, jint count, jint bci)
 				return entries[i].line_number;
 			}
 		}
+	} else if (count == 1) {
+		// Only one line entry, simply return that one even if bci is invalid
+		return entries[0].line_number;
 	}
 	return -1;
 }
@@ -112,13 +115,11 @@ get_line_number(jvmtiEnv *jvmti, jmethodID method, jint bci, int *line)
 {
 	jvmtiError error = JVMTI_ERROR_NONE;
 	*line = -1;
-	if (bci >= 0) {
-		jint count;
-		jvmtiLineNumberEntry* entries;
-		if (!(error = (*jvmti)->GetLineNumberTable(jvmti, method, &count, &entries))) {
-			*line = bci2line(entries, count, bci);
-			(*jvmti)->Deallocate(jvmti, (char *) entries);
-		}
+	jint count;
+	jvmtiLineNumberEntry* entries;
+	if (!(error = (*jvmti)->GetLineNumberTable(jvmti, method, &count, &entries))) {
+		*line = bci2line(entries, count, bci);
+		(*jvmti)->Deallocate(jvmti, (char *) entries);
 	}
 	return error;
 }
@@ -248,55 +249,51 @@ get_DebugEntries(jvmtiEnv *jvmti, jvmtiCompiledMethodLoadRecordHeader *header,
 			}
 
 			DebugEntry *current = *debug_entries;
-			DebugEntry *prev = NULL;
 			do {
 				if (JVMTI_CMLR_INLINE_INFO == header->kind) {
 					jvmtiCompiledMethodLoadInlineRecord *record = (jvmtiCompiledMethodLoadInlineRecord *) header;
 					for (int i = 0; i < record->numpcs; i++) {
+						// Only care about the method on the top of the stack which is the actual code
 						int inlined_bci = record->pcinfo[i].bcis[0];
 						jmethodID inlined_method = record->pcinfo[i].methods[0];
 						jvmtiError error;
-						// Filter out unknown BCI indexes
-						if (inlined_bci >= 0) {
-							int inlined_line;
-							char *inlined_filename;
-							// Only care about the method on the top of the stack which is the actual code
-							if (method == inlined_method) {
-								// Avoid lookups and allocation if the current pcinfo is the current method
-								inlined_line = bci2line(method_lines, method_lines_count, inlined_bci);
-								inlined_filename = method_filename;
-							} else if ((error = get_filename(jvmti, inlined_method, &inlined_filename)) == JVMTI_ERROR_NONE) {
-								if (error = get_line_number(jvmti, inlined_method, inlined_bci, &inlined_line)) {
-									LOG_JVMTI_DEBUG(jvmti, error, "Unable to get line number for bci %d in %s inlined into %s", inlined_bci, inlined_filename, method_name);
-									free(inlined_filename);
-									continue;
-								}
-							} else {
-								char *inline_method_name;
-								if (get_method_name(jvmti, inlined_method, &inline_method_name) == JVMTI_ERROR_NONE) {
-									LOG_JVMTI_DEBUG(jvmti, error, "Unable to get filename for %s inlined into %s", inline_method_name, method_name);
-									free(inline_method_name);
-								} else {
-									LOG_JVMTI_DEBUG(jvmti, error, "Unable to get filename for method inlined into %s", method_name);
-								}
-								// Nothing to free
+						int inlined_line;
+						char *inlined_filename;
+
+						//TODO: Why do we get so many BCI that are -1
+						// According to perf-map-agent HotSpot does not retain line number information for inlined methods
+
+						if (method == inlined_method) {
+							// Avoid lookups and allocation if the current pcinfo is the current method
+							inlined_line = bci2line(method_lines, method_lines_count, inlined_bci);
+							inlined_filename = method_filename;
+						} else if ((error = get_filename(jvmti, inlined_method, &inlined_filename)) == JVMTI_ERROR_NONE) {
+							if (error = get_line_number(jvmti, inlined_method, inlined_bci, &inlined_line)) {
+								LOG_JVMTI_DEBUG(jvmti, error, "%s : Unable to get line number for %s with bci %d", method_name, inlined_filename, inlined_bci);
+								free(inlined_filename);
 								continue;
 							}
-							// Filter out entries with no line number information or that are the same as the previous entry
-							if (inlined_line > 0 && (prev == NULL || (prev->line != inlined_line || strcmp(prev->filename, inlined_filename)))) {
-								current->address = (uint64_t) record->pcinfo[i].pc;
-								current->discriminator = 0;
-								current->line = inlined_line;
-								current->filename = inlined_filename;
-								prev = current;
-								current++;
-							} else if (method_filename != inlined_filename) {
-								free(inlined_filename);
-							}
 						} else {
-							//TODO: Why do we get so many BCI that are -1
-							// According to perf-map-agent HotSpot does not retain line number information for inlined methods
-							LOG_TRACE("Negative BCI (%d) in the inlining information for method %s", inlined_bci, method_name);
+							char *inline_method_name;
+							if (get_method_name(jvmti, inlined_method, &inline_method_name) == JVMTI_ERROR_NONE) {
+								LOG_JVMTI_DEBUG(jvmti, error, "%s : Unable to get filename for the inlined method %s", method_name, inline_method_name);
+								free(inline_method_name);
+							} else {
+								LOG_JVMTI_DEBUG(jvmti, error, "%s : Unable to get filename for a inlined method", method_name);
+							}
+							continue;
+						}
+
+						// Filter out entries with bad line number information
+						LOG_TRACE("DebugInfo %s : %s:%d", method_name, inlined_filename, inlined_line);
+						if (inlined_line > 0) {
+							current->address = (uint64_t) record->pcinfo[i].pc;
+							current->discriminator = 0;
+							current->line = inlined_line;
+							current->filename = inlined_filename;
+							current++;
+						} else if (method_filename != inlined_filename) {
+							free(inlined_filename);
 						}
 					}
 				}
@@ -383,6 +380,7 @@ method_load(jvmtiEnv *jvmti,
 		if (error = get_method_name(jvmti, method, &method_name)) {
 			LOG_JVMTI_ERROR(jvmti, error, "Get Method Name");
 		} else {
+			LOG_DEBUG("Loaded Method : %s", method_name);
 			cl.name = method_name;
 			jint method_lines_count;
 			jvmtiLineNumberEntry* method_lines;
@@ -424,7 +422,7 @@ method_load(jvmtiEnv *jvmti,
 
 void JNICALL
 code_generated(jvmtiEnv *jvmti,
-							 const char* name,
+							 const char* method_name,
 							 const void* address,
 							 jint length)
 {
@@ -435,6 +433,7 @@ code_generated(jvmtiEnv *jvmti,
 			pthread_mutex_unlock(&agent_lock);
 		}
 	} else {
+		LOG_DEBUG("Code Generated : %s", method_name);
 		CodeLoadRecord codeload;
 		codeload.header.id = JIT_CODE_LOAD;
 		if (getTimestamp(&codeload.header.timestamp)) {
@@ -444,7 +443,7 @@ code_generated(jvmtiEnv *jvmti,
 		codeload.tid = pthread_self();
 		codeload.address = codeload.virtual_address = (uint64_t) address;
 		codeload.size = length;
-		codeload.name = name;
+		codeload.name = method_name;
 		write_CodeLoadRecord(&codeload);
 	}
 }
@@ -482,9 +481,9 @@ parse_args(char *args, char *directory)
 
 
 	log_init(stdout, level, "jit-perf-map");
-	LOG_DEBUG("Logging Enabled: %s", log_level_name(level));
-	LOG_DEBUG("Duration: %lds", duration >= 0 ? duration / 1000000000 : duration);
-	LOG_DEBUG("JitDump Output Directory: %s", directory);
+	LOG_INFO("Logging Enabled: %s", log_level_name(level));
+	LOG_INFO("Duration: %lds", duration >= 0 ? duration / 1000000000 : duration);
+	LOG_INFO("JitDump Output Directory: %s", directory);
 	return 0;
 }
 
