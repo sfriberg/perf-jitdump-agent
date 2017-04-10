@@ -17,4 +17,47 @@
 # with this program. If not, see <http://www.gnu.org/licenses/>.
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+processArgs()
+{
+    while [ $# -gt 0 ]; do
+	case $1 in
+	    (-d|--pid)
+		DURATION=$2
+		shift
+		;;
+	    (-p|--pid)
+		PID=$2
+		shift
+		;;
+	esac
+	shift
+    done
+
+    if [ ${PID}x == x ]; then
+	echo "Must provide a pid with -p|--pid"
+	exit 1
+    fi
+    if [ ${DURATION}x == x ]; then
+	echo "Must provide a duration with -d|--duration"
+	exit 1
+    fi
+}
+
+# Main
+
+PERF_EXEC=${PERF_EXEC:-"perf"}
+
+# Test PERF support for --jit
+${PERF_EXEC} inject --jit -i /dev/null > /dev/null 2>&1
+if [ $? -eq 129 ]; then
+    echo "Perf version (${PERF_EXEC}) does not support --jit. Set PERF_EXEC environment variable to a version of PERF that does."
+    exit 1;
+fi
+
+processArgs "$@"
+
+
 $JAVA_HOME/bin/java -cp $JAVA_HOME/lib/tools.jar:$DIR/../lib/Perf-JitDump-Agent.jar jitdump.Main "$@"
+sudo ${PERF_EXEC} record -g -k 1 -p ${PID} -- sleep ${DURATION}
+sudo ${PERF_EXEC} inject -j -i perf.data -o perf.jit.data

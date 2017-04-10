@@ -248,39 +248,42 @@ close_jitdump()
 	getTimestamp(&close.timestamp);
 
 	if (!pthread_mutex_lock(&jitdump_lock)) {
-		if (jitdump != NULL) {
-			if (fwrite(&close, sizeof (RecordHeader), 1, jitdump) != 1) {
-				LOG_ERROR("%s : %s", "Writing close record", strerror(errno));
-				error = -1;
-			};
-			if (fclose(jitdump)) {
-				LOG_ERROR("%s : %s", "Closing jit dump", strerror(errno));
-				error = -1;
-			} else {
-				jitdump = NULL;
-			}
-		}
-
-		if (marker != NULL) {
-			long pgsz;
-			if ((pgsz = sysconf(_SC_PAGESIZE)) == -1) {
-				LOG_ERROR("%s : %s", "Getting page size", strerror(errno));
-				error = -1;
-			} else {
-				if (munmap(marker, pgsz)) {
-					LOG_ERROR("%s : %s", "Unmapping jit dump", strerror(errno));
+		if (jitdump != NULL && marker != NULL) {
+			if (jitdump != NULL) {
+				if (fwrite(&close, sizeof (RecordHeader), 1, jitdump) != 1) {
+					LOG_ERROR("%s : %s", "Writing close record", strerror(errno));
+					error = -1;
+				};
+				if (fclose(jitdump)) {
+					LOG_ERROR("%s : %s", "Closing jit dump", strerror(errno));
 					error = -1;
 				} else {
-					marker = NULL;
+					jitdump = NULL;
 				}
+			}
+
+			if (marker != NULL) {
+				long pgsz;
+				if ((pgsz = sysconf(_SC_PAGESIZE)) == -1) {
+					LOG_ERROR("%s : %s", "Getting page size", strerror(errno));
+					error = -1;
+				} else {
+					if (munmap(marker, pgsz)) {
+						LOG_ERROR("%s : %s", "Unmapping jit dump", strerror(errno));
+						error = -1;
+					} else {
+						marker = NULL;
+					}
+				}
+			}
+
+			if (!error) {
+				LOG_INFO("Jit dump closed");
 			}
 		}
 		pthread_mutex_unlock(&jitdump_lock);
 	}
 
-	if (!error) {
-		LOG_INFO("Jit dump closed");
-	}
 	return error;
 }
 

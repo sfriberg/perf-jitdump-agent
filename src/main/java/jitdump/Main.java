@@ -99,18 +99,18 @@ public class Main {
 
 		OptionParser parser = new OptionParser();
 		OptionSpec<Integer> pid = parser.acceptsAll(asList("p", "pid")).withRequiredArg().ofType(Integer.class).required()
-						.describedAs("PID of the process to attach agent to");
+						.describedAs("PID of the process to attach agent to.");
 		OptionSpec<Verbose> verbose = parser.acceptsAll(asList("v", "verbose")).withRequiredArg().ofType(Verbose.class)
 						.withValuesConvertedBy(new EnumConverter<Verbose>(Verbose.class) {
-						}).defaultsTo(Verbose.OFF).describedAs("Logging level for the native agent");
+						}).defaultsTo(Verbose.OFF).describedAs("Logging level for the native agent.");
 		OptionSpec<Void> version = parser.acceptsAll(asList("V", "version")).forHelp();
 		OptionSpec<String> directory = parser.acceptsAll(asList("directory")).withRequiredArg().ofType(String.class)
-						.defaultsTo(System.getProperty("user.home") + "/.debug/jit").describedAs("Directory to store jitdump");
+						.defaultsTo(System.getProperty("user.home") + "/.debug/jit").describedAs("Directory to store jitdump.");
 		OptionSpec<Long> duration = parser.acceptsAll(asList("d", "duration")).withRequiredArg().ofType(Long.class)
-						.defaultsTo(-1L).describedAs("Duration of recording method compilation to jitdump");
+						.defaultsTo(-1L).describedAs("Duration of recording method compilation to jitdump, in seconds.");
 		OptionSpec<String> library = parser.acceptsAll(asList("l", "library")).withRequiredArg().ofType(String.class)
-						.defaultsTo(Paths.get(JAR_LOCATION).resolve("libperfjitdump.so").toAbsolutePath().toString())
-						.describedAs("Full path to the libperfjitdump.so");
+						.defaultsTo(Paths.get(JAR_LOCATION).getParent().resolve("libperfjitdump.so").toAbsolutePath().toString())
+						.describedAs("Full path to the libperfjitdump.so.");
 		OptionSpec<Void> help = parser.acceptsAll(asList("h", "help")).forHelp();
 
 		try {

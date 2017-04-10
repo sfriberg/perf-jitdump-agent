@@ -24,7 +24,7 @@ install(FILES ${PROJECT_BINARY_DIR}/Perf-JitDump-Agent.jar
 install(TARGETS  perfjitdump
   LIBRARY DESTINATION ./lib)
 
-install(FILES  src/main/bash/jitdump 
+install(FILES  src/main/bash/jitdump src/main/bash/jitdump-record
   DESTINATION ./bin
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ)
 

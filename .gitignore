@@ -17,3 +17,10 @@ CTestTestfile.cmake
 
 # NetBeans
 nbproject/
+nbactions.xml
+
+# Linux Perf
+perf.data
+perf.data.old
+perf.jit.data
+perf.jit.data.old

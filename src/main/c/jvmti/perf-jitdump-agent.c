@@ -358,7 +358,7 @@ method_load(jvmtiEnv *jvmti,
 						const void* compile_info)
 {
 	if (duration_expired()) {
-		if (pthread_mutex_lock(&agent_lock)) {
+		if (!pthread_mutex_lock(&agent_lock)) {
 			stop_jvmti(jvmti);
 			close_jitdump();
 			pthread_mutex_unlock(&agent_lock);
@@ -426,7 +426,7 @@ code_generated(jvmtiEnv *jvmti,
 							 jint length)
 {
 	if (duration_expired()) {
-		if (pthread_mutex_lock(&agent_lock)) {
+		if (!pthread_mutex_lock(&agent_lock)) {
 			stop_jvmti(jvmti);
 			close_jitdump();
 			pthread_mutex_unlock(&agent_lock);
