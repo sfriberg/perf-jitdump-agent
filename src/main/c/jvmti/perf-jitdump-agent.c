@@ -28,7 +28,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -148,7 +147,7 @@ get_filename(jvmtiEnv *jvmti, jmethodID method, char **filename)
 			char *file;
 			if (!(error = (*jvmti)->GetSourceFileName(jvmti, klass, &file))) {
 				char *path = klass_signature[0] == 'L' ? klass_signature + 1 : klass_signature;
-				char *last_slash = rindex(path, '/');
+				char *last_slash = strrchr(path, '/');
 				int path_len = last_slash == NULL ? 0 : last_slash - path;
 				int length = path_len + strlen(file) + 2;
 				if ((*filename = malloc(length * sizeof (char))) != NULL) {
