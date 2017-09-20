@@ -117,20 +117,11 @@ extern "C" {
 	 * Must be written after the corresponding DebugInfoRecord.
 	 * 
 	 * @param clRecord CodeLoadRecord to write to the jit dump file
+	 * @param diRecord DebugInfoRecord to write to jit dump file, or NULL if no debug information to write
 	 * @return 0 on success
 	 */
 	int
-	write_CodeLoadRecord(CodeLoadRecord *clRecord);
-
-	/**
-	 * Write DebugInfoRecord to open jit dump file.
-	 * Must be written before the corresponding CodeLoadRecord.
-	 * 
-	 * @param diRecord DebugInfoRecord to write to jit dump file
-	 * @return 0 on success
-	 */
-	int
-	write_DebugInfoRecord(DebugInfoRecord *diRecord);
+	write_CodeLoadRecord(CodeLoadRecord *clRecord, DebugInfoRecord *diRecord);
 
 #ifdef __cplusplus
 }

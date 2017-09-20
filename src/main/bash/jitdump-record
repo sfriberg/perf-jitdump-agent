@@ -46,12 +46,12 @@ processArgs()
 
 # Main
 
-PERF_EXEC=${PERF_EXEC:-"perf"}
+PERF_EXEC=${PERF_EXEC:-`which perf`}
 
 # Test PERF support for --jit
 ${PERF_EXEC} inject --jit -i /dev/null > /dev/null 2>&1
 if [ $? -eq 129 ]; then
-    echo "Perf version (${PERF_EXEC}) does not support --jit. Set PERF_EXEC environment variable to a version of PERF that does."
+    echo "Perf version (${PERF_EXEC}) does not support 'inject --jit'. Set PERF_EXEC environment variable to a version of PERF that does."
     exit 1;
 fi
 
@@ -59,5 +59,9 @@ processArgs "$@"
 
 
 $JAVA_HOME/bin/java -cp $JAVA_HOME/lib/tools.jar:$DIR/../lib/Perf-JitDump-Agent.jar jitdump.Main "$@"
-sudo ${PERF_EXEC} record -g -k 1 -p ${PID} -- sleep ${DURATION}
-sudo ${PERF_EXEC} inject -j -i perf.data -o perf.jit.data
+if [ $? -eq 0 ]; then
+    sudo ${PERF_EXEC} record -g -k 1 -p ${PID} -- sleep ${DURATION}
+    sudo ${PERF_EXEC} inject -j -i perf.data -o perf.jit.data
+else
+    exit $?
+fi

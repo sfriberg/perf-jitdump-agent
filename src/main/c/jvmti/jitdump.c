@@ -287,40 +287,49 @@ close_jitdump()
 	return error;
 }
 
+/**
+ * Write DebugInfoRecord to open jit dump file.
+ * Must be written before the corresponding CodeLoadRecord.
+ * 
+ * NOTE: Ensure jitdump is available and access is synchronized.
+ * 
+ * @param diRecord DebugInfoRecord to write to jit dump file
+ * @return 0 on success
+ */
+static int
+write_DebugInfoRecord(DebugInfoRecord *diRecord)
+{
+	diRecord->count = 0;
+	diRecord->header.record_size = sizeof (DebugInfoRecord) - sizeof (DebugEntry *);
+	for (DebugEntry *current = diRecord->entries; current != NULL && current->filename != NULL; current++, diRecord->count++) {
+		diRecord->header.record_size += (sizeof (DebugEntry) - sizeof (char *)) + strlen(current->filename) + 1;
+	}
+	fwrite(diRecord, sizeof (DebugInfoRecord) - sizeof (DebugEntry *), 1, jitdump);
+	for (DebugEntry *current = diRecord->entries; current != NULL && current->filename != NULL; current++) {
+		fwrite(current, sizeof (DebugEntry) - sizeof (char *), 1, jitdump);
+		fwrite((void *) current->filename, strlen(current->filename) + 1, 1, jitdump);
+	}
+	return 0;
+}
+
 int
-write_CodeLoadRecord(CodeLoadRecord *clRecord)
+write_CodeLoadRecord(CodeLoadRecord *clRecord, DebugInfoRecord *diRecord)
 {
 	size_t name_len = strlen(clRecord->name) + 1;
 	clRecord->header.record_size = sizeof (CodeLoadRecord) - sizeof (char *) +name_len + clRecord->size;
 
 	if (!pthread_mutex_lock(&jitdump_lock)) {
 		if (jitdump != NULL) {
+			if (diRecord != NULL) {
+				write_DebugInfoRecord(diRecord);
+			}
 			clRecord->index = code_index++;
 			fwrite(clRecord, sizeof (CodeLoadRecord) - sizeof (char *), 1, jitdump);
 			fwrite((void *) clRecord->name, name_len, 1, jitdump);
 			fwrite((void *) clRecord->address, clRecord->size, 1, jitdump);
 		}
 		pthread_mutex_unlock(&jitdump_lock);
+		return 0;
 	}
-}
-
-int
-write_DebugInfoRecord(DebugInfoRecord *diRecord)
-{
-	diRecord->count = 0;
-	diRecord->header.record_size = sizeof (DebugInfoRecord) - sizeof (DebugEntry *);
-	for (DebugEntry *entry = diRecord->entries; entry->filename != NULL; entry++, diRecord->count++) {
-		diRecord->header.record_size += (sizeof (DebugEntry) - sizeof (char *)) + strlen(entry->filename) + 1;
-	}
-
-	if (!pthread_mutex_lock(&jitdump_lock)) {
-		if (jitdump != NULL) {
-			fwrite(diRecord, sizeof (DebugInfoRecord) - sizeof (DebugEntry *), 1, jitdump);
-			for (DebugEntry *current = diRecord->entries; current->filename != NULL; current++) {
-				fwrite(current, sizeof (DebugEntry) - sizeof (char *), 1, jitdump);
-				fwrite((void *) current->filename, strlen(current->filename) + 1, 1, jitdump);
-			}
-		}
-		pthread_mutex_unlock(&jitdump_lock);
-	}
+	return -1;
 }

@@ -68,7 +68,7 @@ log_jvmti(const char* function, int line, LogLevel level, jvmtiEnv *jvmti, jvmti
 
 	if (!(*jvmti)->GetErrorName(jvmti, error, &error_name)) {
 		log_msg(function, line, level, "%s : %s", message, error_name);
-		(*jvmti)->Deallocate(jvmti, error_name);
+		(*jvmti)->Deallocate(jvmti, (unsigned char *) error_name);
 	} else {
 		log_msg(function, line, level, "%s : jvmtiError = %d", message, error);
 	}
@@ -116,9 +116,9 @@ get_line_number(jvmtiEnv *jvmti, jmethodID method, jint bci, int *line)
 	*line = -1;
 	jint count;
 	jvmtiLineNumberEntry* entries;
-	if (!(error = (*jvmti)->GetLineNumberTable(jvmti, method, &count, &entries))) {
+	if ((error = (*jvmti)->GetLineNumberTable(jvmti, method, &count, &entries)) == JVMTI_ERROR_NONE) {
 		*line = bci2line(entries, count, bci);
-		(*jvmti)->Deallocate(jvmti, (char *) entries);
+		(*jvmti)->Deallocate(jvmti, (unsigned char *) entries);
 	}
 	return error;
 }
@@ -141,11 +141,11 @@ get_filename(jvmtiEnv *jvmti, jmethodID method, char **filename)
 
 	//TODO: For a large method with many inlined methods do we need to consider DeleteLocalRef to not get too many local refs
 	//http://docs.oracle.com/javase/7/docs/technotes/guides/jni/spec/functions.html#wp18654
-	if (!(error = (*jvmti)->GetMethodDeclaringClass(jvmti, method, &klass))) {
+	if ((error = (*jvmti)->GetMethodDeclaringClass(jvmti, method, &klass)) == JVMTI_ERROR_NONE) {
 		char *klass_signature;
-		if (!(error = (*jvmti)->GetClassSignature(jvmti, klass, &klass_signature, NULL))) {
+		if ((error = (*jvmti)->GetClassSignature(jvmti, klass, &klass_signature, NULL)) == JVMTI_ERROR_NONE) {
 			char *file;
-			if (!(error = (*jvmti)->GetSourceFileName(jvmti, klass, &file))) {
+			if ((error = (*jvmti)->GetSourceFileName(jvmti, klass, &file)) == JVMTI_ERROR_NONE) {
 				char *path = klass_signature[0] == 'L' ? klass_signature + 1 : klass_signature;
 				char *last_slash = strrchr(path, '/');
 				int path_len = last_slash == NULL ? 0 : last_slash - path;
@@ -159,9 +159,9 @@ get_filename(jvmtiEnv *jvmti, jmethodID method, char **filename)
 				} else {
 					error = JVMTI_ERROR_OUT_OF_MEMORY;
 				}
-				(*jvmti)->Deallocate(jvmti, file);
+				(*jvmti)->Deallocate(jvmti, (unsigned char *) file);
 			}
-			(*jvmti)->Deallocate(jvmti, klass_signature);
+			(*jvmti)->Deallocate(jvmti, (unsigned char *) klass_signature);
 		}
 	}
 	return error;
@@ -181,12 +181,12 @@ get_method_name(jvmtiEnv *jvmti, jmethodID method, char **method_name)
 	jvmtiError error = JVMTI_ERROR_NONE;
 	jclass klass;
 
-	if (!(error = (*jvmti)->GetMethodDeclaringClass(jvmti, method, &klass))) {
+	if ((error = (*jvmti)->GetMethodDeclaringClass(jvmti, method, &klass)) == JVMTI_ERROR_NONE) {
 		char *klass_signature;
-		if (!(error = (*jvmti)->GetClassSignature(jvmti, klass, &klass_signature, NULL))) {
+		if ((error = (*jvmti)->GetClassSignature(jvmti, klass, &klass_signature, NULL)) == JVMTI_ERROR_NONE) {
 			char *name;
 			char *signature;
-			if (!(error = (*jvmti)->GetMethodName(jvmti, method, &name, &signature, NULL))) {
+			if ((error = (*jvmti)->GetMethodName(jvmti, method, &name, &signature, NULL)) == JVMTI_ERROR_NONE) {
 				//strlen crashes on some signatures
 				char *package = klass_signature[0] == 'L' ? klass_signature + 1 : klass_signature;
 				int package_len = 0;
@@ -199,10 +199,10 @@ get_method_name(jvmtiEnv *jvmti, jmethodID method, char **method_name)
 				*method_name = malloc(length * sizeof (char));
 				snprintf(*method_name, length, "%.*s.%s%s", package_len, package, name, signature);
 
-				(*jvmti)->Deallocate(jvmti, signature);
-				(*jvmti)->Deallocate(jvmti, name);
+				(*jvmti)->Deallocate(jvmti, (unsigned char *) signature);
+				(*jvmti)->Deallocate(jvmti, (unsigned char *) name);
 			}
-			(*jvmti)->Deallocate(jvmti, klass_signature);
+			(*jvmti)->Deallocate(jvmti, (unsigned char *) klass_signature);
 		}
 	}
 	return error;
@@ -213,18 +213,12 @@ get_method_name(jvmtiEnv *jvmti, jmethodID method, char **method_name)
  * 
  * @param jvmti JVMTI environment to use to look up required information
  * @param header header of jvmtiCompiledMethodLoadRecord
- * @param method jmethodID of the current method
- * @param method_filename source code filename of the current method
- * @param method_lines jvmtiLineNumberEntry array (bci->line) for the current method
- * @param method_lines_count number of entries in the array for the current method
  * @param debug_entries JitDumpDebugEntry points to a null terminated array if successful or NULL otherwise
  * @return jvmtiError
  */
 static jvmtiError
 get_DebugEntries(jvmtiEnv *jvmti, jvmtiCompiledMethodLoadRecordHeader *header,
-								 jmethodID method, char *method_name, char *method_filename,
-								 jvmtiLineNumberEntry* method_lines, jint method_lines_count,
-								 DebugEntry **debug_entries)
+								 const char *method_name, DebugEntry **debug_entries)
 {
 	*debug_entries = NULL;
 
@@ -239,7 +233,7 @@ get_DebugEntries(jvmtiEnv *jvmti, jvmtiCompiledMethodLoadRecordHeader *header,
 				jvmtiCompiledMethodLoadInlineRecord *record = (jvmtiCompiledMethodLoadInlineRecord *) iterator;
 				numpcs += record->numpcs;
 			}
-		} while (iterator = iterator->next);
+		} while ((iterator = iterator->next) != NULL);
 
 		if (numpcs > 0) {
 
@@ -262,17 +256,15 @@ get_DebugEntries(jvmtiEnv *jvmti, jvmtiCompiledMethodLoadRecordHeader *header,
 						//TODO: Why do we get so many BCI that are -1
 						// According to perf-map-agent HotSpot does not retain line number information for inlined methods
 
-						if (method == inlined_method) {
-							// Avoid lookups and allocation if the current pcinfo is the current method
-							inlined_line = bci2line(method_lines, method_lines_count, inlined_bci);
-							inlined_filename = method_filename;
-						} else if ((error = get_filename(jvmti, inlined_method, &inlined_filename)) == JVMTI_ERROR_NONE) {
-							if (error = get_line_number(jvmti, inlined_method, inlined_bci, &inlined_line)) {
+						//TODO: Potentially cache method filename as many will probably be the repetitions
+						if ((error = get_filename(jvmti, inlined_method, &inlined_filename)) == JVMTI_ERROR_NONE) {
+							if ((error = get_line_number(jvmti, inlined_method, inlined_bci, &inlined_line)) != JVMTI_ERROR_NONE) {
 								LOG_JVMTI_DEBUG(jvmti, error, "%s : Unable to get line number for %s with bci %d", method_name, inlined_filename, inlined_bci);
 								free(inlined_filename);
 								continue;
 							}
 						} else {
+							// Print error message
 							char *inline_method_name;
 							if (get_method_name(jvmti, inlined_method, &inline_method_name) == JVMTI_ERROR_NONE) {
 								LOG_JVMTI_DEBUG(jvmti, error, "%s : Unable to get filename for the inlined method %s", method_name, inline_method_name);
@@ -284,19 +276,19 @@ get_DebugEntries(jvmtiEnv *jvmti, jvmtiCompiledMethodLoadRecordHeader *header,
 						}
 
 						// Filter out entries with bad line number information
-						LOG_TRACE("DebugInfo %s : %s:%d", method_name, inlined_filename, inlined_line);
 						if (inlined_line > 0) {
 							current->address = (uint64_t) record->pcinfo[i].pc;
 							current->discriminator = 0;
 							current->line = inlined_line;
 							current->filename = inlined_filename;
+							LOG_TRACE("DebugInfo %s : 0x%X : %s:%d", method_name, current->address, current->filename, current->line);
 							current++;
-						} else if (method_filename != inlined_filename) {
+						} else {
 							free(inlined_filename);
 						}
 					}
 				}
-			} while (header = header->next);
+			} while ((header = header->next) != NULL);
 		}
 	}
 	return JVMTI_ERROR_NONE;
@@ -334,15 +326,15 @@ stop_jvmti(jvmtiEnv *jvmti)
 	jvmtiError error = JVMTI_ERROR_NONE;
 	jvmtiEventCallbacks callbacks;
 
-	if (error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_DISABLE, JVMTI_EVENT_COMPILED_METHOD_LOAD, NULL)) {
+	if ((error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_DISABLE, JVMTI_EVENT_COMPILED_METHOD_LOAD, NULL)) != JVMTI_ERROR_NONE) {
 		LOG_JVMTI_ERROR(jvmti, error, "Disabling Compiled Method Load Event");
 	}
-	if (error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_DISABLE, JVMTI_EVENT_DYNAMIC_CODE_GENERATED, NULL)) {
+	if ((error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_DISABLE, JVMTI_EVENT_DYNAMIC_CODE_GENERATED, NULL)) != JVMTI_ERROR_NONE) {
 		LOG_JVMTI_ERROR(jvmti, error, "Disabling Dynamic Code Generated Event");
 	}
 
 	memset(&callbacks, 0, sizeof (jvmtiEventCallbacks));
-	if (error = (*jvmti)->SetEventCallbacks(jvmti, &callbacks, sizeof (jvmtiEventCallbacks))) {
+	if ((error = (*jvmti)->SetEventCallbacks(jvmti, &callbacks, sizeof (jvmtiEventCallbacks))) != JVMTI_ERROR_NONE) {
 		LOG_JVMTI_ERROR(jvmti, error, "Clearing Callbacks");
 	}
 	return error;
@@ -357,66 +349,64 @@ method_load(jvmtiEnv *jvmti,
 						const jvmtiAddrLocationMap* map,
 						const void* compile_info)
 {
+	jvmtiError error = JVMTI_ERROR_NONE;
+	char *method_name;
+	CodeLoadRecord cl;
+
 	if (duration_expired()) {
 		if (!pthread_mutex_lock(&agent_lock)) {
 			stop_jvmti(jvmti);
 			close_jitdump();
 			pthread_mutex_unlock(&agent_lock);
 		}
-	} else {
-		CodeLoadRecord cl;
-		cl.header.id = JIT_CODE_LOAD;
-		if (getTimestamp(&cl.header.timestamp)) {
-			return;
-		}
-		cl.pid = getpid();
-		cl.tid = pthread_self();
-		cl.address = cl.virtual_address = (uint64_t) code_addr;
-		cl.size = code_size;
-
-		jvmtiError error = JVMTI_ERROR_NONE;
-		char *method_name;
-		if (error = get_method_name(jvmti, method, &method_name)) {
-			LOG_JVMTI_ERROR(jvmti, error, "Get Method Name");
-		} else {
-			LOG_DEBUG("Loaded Method : %s", method_name);
-			cl.name = method_name;
-			jint method_lines_count;
-			jvmtiLineNumberEntry* method_lines;
-			if (!(*jvmti)->GetLineNumberTable(jvmti, method, &method_lines_count, &method_lines)) {
-
-				char *method_filename;
-				if (!get_filename(jvmti, method, &method_filename)) {
-					if (compile_info) {
-						jvmtiCompiledMethodLoadRecordHeader *header = (jvmtiCompiledMethodLoadRecordHeader*) compile_info;
-
-						DebugEntry *entries;
-						get_DebugEntries(jvmti, header, method, method_name, method_filename,
-														method_lines, method_lines_count, &entries);
-						if (entries != NULL) {
-							DebugInfoRecord di;
-							di.header.id = JIT_CODE_DEBUG_INFO;
-							di.header.timestamp = cl.header.timestamp;
-							di.address = cl.address;
-							di.entries = entries;
-							write_DebugInfoRecord(&di);
-							for (DebugEntry *current = di.entries; current->filename != NULL; current++) {
-								if (method_filename != current->filename) {
-									free(current->filename);
-								}
-							}
-							free(di.entries);
-						}
-
-					}
-					write_CodeLoadRecord(&cl);
-					free(method_filename);
-				}
-				(*jvmti)->Deallocate(jvmti, (char *) method_lines);
-			}
-			free(method_name);
-		}
+		return;
 	}
+
+	if ((error = get_method_name(jvmti, method, &method_name)) != JVMTI_ERROR_NONE) {
+		LOG_JVMTI_ERROR(jvmti, error, "Getting Method Name");
+		return;
+	}
+
+	cl.header.id = JIT_CODE_LOAD;
+	cl.name = method_name;
+	cl.pid = getpid();
+	cl.tid = pthread_self();
+	cl.address = cl.virtual_address = (uint64_t) code_addr;
+	cl.size = code_size;
+	if (getTimestamp(&cl.header.timestamp)) {
+		goto end;
+	}
+
+	LOG_DEBUG("Loaded Method : %s 0x%X-0x%X (%ld)", cl.name, cl.address, (cl.address + cl.size), cl.size);
+
+	// TODO: Improve code flow
+	if (compile_info != NULL) {
+
+		DebugEntry *entries;
+		error = get_DebugEntries(jvmti, (jvmtiCompiledMethodLoadRecordHeader*) compile_info, method_name, &entries);
+		if (error == JVMTI_ERROR_NONE) {
+			DebugInfoRecord di;
+			di.header.id = JIT_CODE_DEBUG_INFO;
+			di.header.timestamp = cl.header.timestamp;
+			di.address = cl.address;
+			di.entries = entries;
+			write_CodeLoadRecord(&cl, &di);
+			if (di.entries != NULL) {
+				for (DebugEntry *current = di.entries; current->filename != NULL; current++) {
+					free(current->filename);
+				}
+				free(di.entries);
+			}
+		} else {
+			write_CodeLoadRecord(&cl, NULL);
+		}
+
+	} else {
+		write_CodeLoadRecord(&cl, NULL);
+	}
+
+end:
+	free(method_name);
 }
 
 void JNICALL
@@ -443,7 +433,7 @@ code_generated(jvmtiEnv *jvmti,
 		codeload.address = codeload.virtual_address = (uint64_t) address;
 		codeload.size = length;
 		codeload.name = method_name;
-		write_CodeLoadRecord(&codeload);
+		write_CodeLoadRecord(&codeload, NULL);
 	}
 }
 
@@ -503,21 +493,21 @@ setup_jvmti(jvmtiEnv *jvmti)
 	capabilities.can_generate_compiled_method_load_events = 1;
 	capabilities.can_get_source_file_name = 1;
 	capabilities.can_get_line_numbers = 1;
-	if (error = (*jvmti)->AddCapabilities(jvmti, &capabilities)) {
+	if ((error = (*jvmti)->AddCapabilities(jvmti, &capabilities)) != JVMTI_ERROR_NONE) {
 		return LOG_JVMTI_ERROR(jvmti, error, "Adding Capabilities");
 	}
 
 	memset(&callbacks, 0, sizeof (jvmtiEventCallbacks));
 	callbacks.CompiledMethodLoad = method_load;
 	callbacks.DynamicCodeGenerated = code_generated;
-	if (error = (*jvmti)->SetEventCallbacks(jvmti, &callbacks, sizeof (jvmtiEventCallbacks))) {
+	if ((error = (*jvmti)->SetEventCallbacks(jvmti, &callbacks, sizeof (jvmtiEventCallbacks))) != JVMTI_ERROR_NONE) {
 		return LOG_JVMTI_ERROR(jvmti, error, "Setting Callbacks");
 	}
 
-	if (error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE, JVMTI_EVENT_COMPILED_METHOD_LOAD, NULL)) {
+	if ((error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE, JVMTI_EVENT_COMPILED_METHOD_LOAD, NULL)) != JVMTI_ERROR_NONE) {
 		return LOG_JVMTI_ERROR(jvmti, error, "Enabling Compiled Method Load Event");
 	}
-	if (error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE, JVMTI_EVENT_DYNAMIC_CODE_GENERATED, NULL)) {
+	if ((error = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE, JVMTI_EVENT_DYNAMIC_CODE_GENERATED, NULL)) != JVMTI_ERROR_NONE) {
 		return LOG_JVMTI_ERROR(jvmti, error, "Enabling Dynamic Code Generated Event");
 	}
 
@@ -555,7 +545,7 @@ Agent_OnLoad(JavaVM *vm, char *args, void *reserved)
 		goto end;
 	}
 
-	if (jni_error = (*vm)->GetEnv(vm, (void**) &jvmti, JVMTI_VERSION_1_2)) {
+	if ((jni_error = (*vm)->GetEnv(vm, (void**) &jvmti, JVMTI_VERSION_1_2)) != JNI_OK) {
 		LOG_ERROR("Error getting JVMTI environment: %d", jni_error);
 		error = -1;
 		goto end;
@@ -604,7 +594,7 @@ Agent_OnAttach(JavaVM* vm, char *args, void *reserved)
 		goto end;
 	}
 
-	if (jni_error = (*vm)->GetEnv(vm, (void **) &jvmti, JVMTI_VERSION_1_2)) {
+	if ((jni_error = (*vm)->GetEnv(vm, (void **) &jvmti, JVMTI_VERSION_1_2)) != JNI_OK) {
 		LOG_ERROR("Error getting JVMTI environment: %d\n", jni_error);
 		error = -1;
 		goto end;
