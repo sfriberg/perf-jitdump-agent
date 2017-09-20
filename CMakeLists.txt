@@ -4,6 +4,9 @@ project (perf-jitdump-agent)
 set(perf-jitdump-agent_VERSION_MAJOR 1)
 set(perf-jitdump-agent_VERSION_MINOR 0)
 
+LIST(APPEND CMAKE_CXX_FLAGS "--std=gnu99")
+LIST(APPEND CMAKE_C_FLAGS "--std=gnu99")
+
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR})
 set(C_SOURCE_DIR src/main/c)
 
