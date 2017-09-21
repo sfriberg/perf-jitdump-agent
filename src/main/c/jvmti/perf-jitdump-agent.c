@@ -528,13 +528,13 @@ Agent_OnLoad(JavaVM *vm, char *args, void *reserved)
 	}
 
 	if (is_jitdump_active()) {
-		// Since jit dump is active logging must be configured as well
 		LOG_ERROR("Jit dump is already active");
 		error = -1;
 		goto end;
 	}
 
 	if (parse_args(args, directory)) {
+		LOG_ERROR("Error parsing ");
 		error = -1;
 		goto end;
 	}
@@ -551,7 +551,7 @@ Agent_OnLoad(JavaVM *vm, char *args, void *reserved)
 		goto end;
 	}
 
-	if (setup_jvmti(jvmti)) {
+	if (setup_jvmti(jvmti) != JVMTI_ERROR_NONE) {
 		error = -1;
 		goto end;
 	}
@@ -600,13 +600,13 @@ Agent_OnAttach(JavaVM* vm, char *args, void *reserved)
 		goto end;
 	}
 
-	if (setup_jvmti(jvmti)) {
+	if (setup_jvmti(jvmti) != JVMTI_ERROR_NONE) {
 		error = -1;
 		goto end;
 	}
 
-	if ((jvmti_error = (*jvmti)->GenerateEvents(jvmti, JVMTI_EVENT_DYNAMIC_CODE_GENERATED)) ||
-					(jvmti_error = (*jvmti)->GenerateEvents(jvmti, JVMTI_EVENT_COMPILED_METHOD_LOAD))) {
+	if ((jvmti_error = (*jvmti)->GenerateEvents(jvmti, JVMTI_EVENT_DYNAMIC_CODE_GENERATED)) != JVMTI_ERROR_NONE ||
+					(jvmti_error = (*jvmti)->GenerateEvents(jvmti, JVMTI_EVENT_COMPILED_METHOD_LOAD)) != JVMTI_ERROR_NONE) {
 		LOG_JVMTI_ERROR(jvmti, jvmti_error, "Generating Events");
 		error = -1;
 	}
