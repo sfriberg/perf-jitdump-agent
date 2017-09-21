@@ -534,7 +534,6 @@ Agent_OnLoad(JavaVM *vm, char *args, void *reserved)
 	}
 
 	if (parse_args(args, directory)) {
-		LOG_ERROR("Error parsing ");
 		error = -1;
 		goto end;
 	}
