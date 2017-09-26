@@ -469,7 +469,7 @@ parse_args(char *args, char *directory)
 	}
 
 
-	log_init(stdout, level, "jit-perf-map");
+	log_init(stdout, level, "perf-jitdump-agent");
 	LOG_INFO("Logging Enabled: %s", log_level_name(level));
 	LOG_INFO("Duration: %lds", duration >= 0 ? duration / 1000000000 : duration);
 	LOG_INFO("JitDump Output Directory: %s", directory);
